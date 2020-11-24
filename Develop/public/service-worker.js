@@ -1,7 +1,13 @@
 // home route & index file
 const CACHE_NAME = "static-cache-v2";
 const DATA_CACHE_NAME = "data-cache-v1";
-const FILES_TO_CACHE = [
+
+const iconSizes = ["192", "512"];
+const iconFiles = iconSizes.map(
+    (size) => `/icons/icon-${size}x${size}.png`
+);
+
+const staticFilesToPreCache = [
     "/",
     "/index.html",
     "/db.js",
@@ -10,48 +16,44 @@ const FILES_TO_CACHE = [
     "/styles.css",
     "/icons/icon-192x192.png",
     "/icons/icon-512x512.png",
-]
+].concat(iconFiles);
+
 // install
 self.addEventListener("install", function (evt) {
-    // pre cache image data
     evt.waitUntil(
-        caches.open(DATA_CACHE_NAME).then((cache) => cache.add("/api/images"))
+        caches.open(CACHE_NAME).then(cache => {
+            console.log("Files were pre-cached successfully!");
+            return cache.addAll(staticFilesToPreCache);
+        })
     );
-
-    // pre cache all static assets
-    evt.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
-    );
-
-    // tell the browser to activate this service worker immediately once it
-    // has finished installing
     self.skipWaiting();
 });
 
 
 // activate
-self.addEventListener("activate", function(evt) {
+self.addEventListener("activate", function (evt) {
     evt.waitUntil(
-      caches.keys().then(keyList => {
-        return Promise.all(
-          keyList.map(key => {
-            if (key !== CACHE_NAME && key !== DATA_CACHE_NAME) {
-              console.log("Removing old cache data", key);
-              return caches.delete(key);
-            }
-          })
-        );
-      })
+        caches.keys().then(keyList => {
+            return Promise.all(
+                keyList.map(key => {
+                    if (key !== CACHE_NAME && key !== DATA_CACHE_NAME) {
+                        console.log("Removing old cache data", key);
+                        return caches.delete(key);
+                    }
+                })
+            );
+        })
     );
-  
+
     self.clients.claim();
-  });
+});
 
 
 
 // fetch
 self.addEventListener("fetch", function (evt) {
-    if (evt.request.url.includes("/api/")) {
+    const { url } = evt.request;
+    if (url.includes("/api/transaction") || url.includes("/api/transaction/bulk")) {
         evt.respondWith(
             caches.open(DATA_CACHE_NAME).then(cache => {
                 return fetch(evt.request)
@@ -69,15 +71,13 @@ self.addEventListener("fetch", function (evt) {
                     });
             }).catch(err => console.log(err))
         );
-
-        return;
+    } else {
+        evt.respondWith(
+            caches.open(CACHE_NAME).then(cache => {
+                return cache.match(evt.request).then(response => {
+                    return response || fetch(evt.request);
+                });
+            })
+        );
     }
-
-    evt.respondWith(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.match(evt.request).then(response => {
-                return response || fetch(evt.request);
-            });
-        })
-    );
 });
